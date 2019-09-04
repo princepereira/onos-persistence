@@ -1,0 +1,40 @@
+From 4eb78c3a33190aebb6bfb417ea66a45cfabd2785 Mon Sep 17 00:00:00 2001
+From: Prince Pereira <prince.pereira@radisys.com>
+Date: Thu, 22 Aug 2019 06:34:24 +0000
+Subject: [PATCH 2/2] ONOS persistence.
+
+---
+ .../main/java/org/onosproject/fwd/StoragePoc.java   | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+ create mode 100644 apps/fwd/src/main/java/org/onosproject/fwd/StoragePoc.java
+
+diff --git a/apps/fwd/src/main/java/org/onosproject/fwd/StoragePoc.java b/apps/fwd/src/main/java/org/onosproject/fwd/StoragePoc.java
+new file mode 100644
+index 0000000..03c45ca
+--- /dev/null
++++ b/apps/fwd/src/main/java/org/onosproject/fwd/StoragePoc.java
+@@ -0,0 +1,21 @@
++package org.onosproject.fwd;
++
++public class StoragePoc {
++    private String id;
++    private String name;
++
++    public StoragePoc(String id, String name) {
++        this.id = id;
++        this.name = name;
++    }
++
++    @Override
++    public String toString() {
++        return "id : "+id+" - name : "+name;
++    }
++
++    @Override
++    public int hashCode() {
++        return id.hashCode();
++    }
++}
+-- 
+2.7.4
+

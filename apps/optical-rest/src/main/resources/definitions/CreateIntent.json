@@ -1,0 +1,86 @@
+{
+  "type": "object",
+  "title": "createIntent",
+  "required": [
+    "ingressPoint",
+    "egressPoint"
+  ],
+  "properties": {
+    "appId": {
+      "type": "string",
+      "example": "org.onosproject.ovsdb"
+    },
+    "ingressPoint": {
+      "type": "object",
+      "title": "ingressPoint",
+      "required": [
+        "device",
+        "port"
+      ],
+      "properties": {
+        "device": {
+          "type": "string",
+          "example": "of:0000000000000001" 
+        },
+        "port": {
+          "type": "string",
+          "example": "1" 
+        }
+      }
+    },
+    "egressPoint": {
+      "type": "object",
+      "title": "egressPoint",
+      "required": [
+        "device",
+        "port"
+      ],
+      "properties": {
+        "device": {
+          "type": "string",
+          "example": "of:0000000000000002"
+        },
+        "port": {
+          "type": "string",
+          "example": "200"
+        }
+      }
+    },
+    "bidirection": {
+      "type": "boolean",
+      "example": true
+    },
+    "signal": {
+      "type": "object",
+      "title": "signal",
+      "required": [
+        "channelSpacing",
+        "gridType",
+        "spacingMultiplier",
+        "slotGranularity"
+      ],
+      "properties": {
+        "channelSpacing": {
+          "type": "string",
+          "enum": ["CHL_100GHZ", "CHL_50GHZ", "CHL_25GHZ", "CHL_12P5GHZ", "CHL_6P25GHZ"],
+          "example": "CHL_50GHZ"
+        },
+        "gridType": {
+          "type": "string",
+          "enum": ["DWDM", "CWDM", "FLEX"],
+          "example": "DWDM"
+        },
+        "spacingMultiplier": {
+          "type": "integer",
+          "format": "int32",
+          "example": 12
+        },
+        "slotGranularity": {
+          "type": "integer",
+          "format": "int32",
+          "example": 4
+        }
+      }
+    }
+  }
+}

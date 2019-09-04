@@ -1,0 +1,15 @@
+BUNDLES = [
+    '//apps/packet-stats/app:onos-apps-packet-stats-app',
+    '//apps/packet-stats/web:onos-apps-packet-stats-web',
+]
+
+
+
+onos_app (
+    app_name = "org.onosproject.packet-stats",
+    title = 'Packet Statistics',
+    category = "Utility",
+    description = " Application to calculate the number of packets of different types",
+    included_bundles = BUNDLES,
+    url = "http://onosproject.org",
+)

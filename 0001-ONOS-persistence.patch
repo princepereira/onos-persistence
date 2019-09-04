@@ -1,0 +1,258 @@
+From 6dc5172f9dc8b24be04dd9bf53e674b8922ba403 Mon Sep 17 00:00:00 2001
+From: Prince Pereira <prince.pereira@radisys.com>
+Date: Thu, 22 Aug 2019 06:34:13 +0000
+Subject: [PATCH 1/2] ONOS persistence.
+
+---
+ .../org/onosproject/fwd/ReactiveForwarding.java    | 28 ++++++++++++++++++++++
+ .../store/flow/impl/ECFlowRuleStore.java           | 20 +++++++++++++---
+ .../persistence/impl/PersistenceManager.java       | 10 +++++---
+ .../persistence/impl/PersistentMap.java            |  6 ++++-
+ .../persistence/impl/PersistentSet.java            |  6 +++++
+ .../impl/EventuallyConsistentMapBuilderImpl.java   |  2 +-
+ 6 files changed, 64 insertions(+), 8 deletions(-)
+
+diff --git a/apps/fwd/src/main/java/org/onosproject/fwd/ReactiveForwarding.java b/apps/fwd/src/main/java/org/onosproject/fwd/ReactiveForwarding.java
+index 9917a85..2eb29c8 100644
+--- a/apps/fwd/src/main/java/org/onosproject/fwd/ReactiveForwarding.java
++++ b/apps/fwd/src/main/java/org/onosproject/fwd/ReactiveForwarding.java
+@@ -15,6 +15,8 @@
+  */
+ package org.onosproject.fwd;
+ 
++import java.text.SimpleDateFormat;
++import java.util.Date;
+ import com.google.common.collect.ImmutableSet;
+ import org.apache.felix.scr.annotations.Activate;
+ import org.apache.felix.scr.annotations.Component;
+@@ -132,6 +134,7 @@ public class ReactiveForwarding {
+     private ReactivePacketProcessor processor = new ReactivePacketProcessor();
+ 
+     private  EventuallyConsistentMap<MacAddress, ReactiveForwardMetrics> metrics;
++    private  EventuallyConsistentMap<String, StoragePoc> pocStore;
+ 
+     private ApplicationId appId;
+ 
+@@ -207,10 +210,25 @@ public class ReactiveForwarding {
+ 
+     @Activate
+     public void activate(ComponentContext context) {
++
++        KryoNamespace.Builder pocSerializer = KryoNamespace.newBuilder()
++                .register(KryoNamespaces.API)
++                .register(StoragePoc.class)
++                .register(MultiValuedTimestamp.class);
++
++        pocStore = storageService.<String, StoragePoc>eventuallyConsistentMapBuilder()
++                .withName("storage-poc")
++                .withSerializer(pocSerializer)
++                .withTimestampProvider((key, metricsData) -> new
++                        MultiValuedTimestamp<>(new WallClockTimestamp(), System.nanoTime()))
++                .build();
++
++
+         KryoNamespace.Builder metricSerializer = KryoNamespace.newBuilder()
+                 .register(KryoNamespaces.API)
+                 .register(ReactiveForwardMetrics.class)
+                 .register(MultiValuedTimestamp.class);
++
+         metrics =  storageService.<MacAddress, ReactiveForwardMetrics>eventuallyConsistentMapBuilder()
+                 .withName("metrics-fwd")
+                 .withSerializer(metricSerializer)
+@@ -218,6 +236,7 @@ public class ReactiveForwarding {
+                         MultiValuedTimestamp<>(new WallClockTimestamp(), System.nanoTime()))
+                 .build();
+ 
++
+         blackHoleExecutor = newSingleThreadExecutor(groupedThreads("onos/app/fwd",
+                                                                    "black-hole-fixer",
+                                                                    log));
+@@ -231,6 +250,15 @@ public class ReactiveForwarding {
+         requestIntercepts();
+ 
+         log.info("Started", appId.id());
++        StoragePoc pocData = pocStore.get("hello");
++        if (pocData != null) {
++            log.info("Data retrieved from the persistence storage : "+pocData.toString());
++        } else {
++            SimpleDateFormat formatter = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
++            Date date = new Date();
++            log.info("prince >>>>>>>>>>>>>>>> pushing the current time to store :  "+formatter.format(date));
++            pocStore.put("hello", new StoragePoc("id-prince", formatter.format(date)));
++        }
+     }
+ 
+     @Deactivate
+diff --git a/core/store/dist/src/main/java/org/onosproject/store/flow/impl/ECFlowRuleStore.java b/core/store/dist/src/main/java/org/onosproject/store/flow/impl/ECFlowRuleStore.java
+index 13fa3a4..a9b726b 100644
+--- a/core/store/dist/src/main/java/org/onosproject/store/flow/impl/ECFlowRuleStore.java
++++ b/core/store/dist/src/main/java/org/onosproject/store/flow/impl/ECFlowRuleStore.java
+@@ -122,7 +122,7 @@ public class ECFlowRuleStore
+ 
+     private static final int MESSAGE_HANDLER_THREAD_POOL_SIZE = 8;
+     private static final int DEFAULT_MAX_BACKUP_COUNT = 2;
+-    private static final boolean DEFAULT_PERSISTENCE_ENABLED = false;
++    private static final boolean DEFAULT_PERSISTENCE_ENABLED = true;
+     private static final int DEFAULT_BACKUP_PERIOD_MILLIS = 2000;
+     private static final int DEFAULT_ANTI_ENTROPY_PERIOD_MILLIS = 5000;
+     private static final long FLOW_RULE_STORE_TIMEOUT_MILLIS = 5000;
+@@ -139,7 +139,7 @@ public class ECFlowRuleStore
+         label = "Delay in ms between anti-entropy runs")
+     private int antiEntropyPeriod = DEFAULT_ANTI_ENTROPY_PERIOD_MILLIS;
+ 
+-    @Property(name = "persistenceEnabled", boolValue = false,
++    @Property(name = "persistenceEnabled", boolValue = true,
+         label = "Indicates whether or not changes in the flow table should be persisted to disk.")
+     private boolean persistenceEnabled = DEFAULT_PERSISTENCE_ENABLED;
+ 
+@@ -237,6 +237,20 @@ public class ECFlowRuleStore
+         deviceService.getDevices().forEach(device -> flowTable.addDevice(device.id()));
+ 
+         logConfig("Started");
++        Map<DeviceId, DeviceFlowTable> flowTables = Maps.newConcurrentMap();
++        Set<Map.Entry<DeviceId, List<TableStatisticsEntry>>> flowList = deviceTableStats.entrySet();
++
++        for (Map.Entry<DeviceId, List<TableStatisticsEntry>> flows: flowList) {
++            List<TableStatisticsEntry> tables = flows.getValue();
++            for (TableStatisticsEntry entry : tables) {
++                if (entry.activeFlowEntries() > 0) {
++                    DeviceFlowTable devflowtable = flowTables.get(flows.getKey());
++                    log.info("prince >>>>>>>>>>>>> existing active flow counts >>>>>> "+entry);
++                    log.info("prince >>>>>>>>>>>>> existing active flows >>>>>> : "+devflowtable);
++                }
++            }
++
++        }
+     }
+ 
+     @Deactivate
+@@ -1024,4 +1038,4 @@ public class ECFlowRuleStore
+             this.state = state;
+         }
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/core/store/persistence/src/main/java/org/onosproject/persistence/impl/PersistenceManager.java b/core/store/persistence/src/main/java/org/onosproject/persistence/impl/PersistenceManager.java
+index 498f5d0..3d8f750 100644
+--- a/core/store/persistence/src/main/java/org/onosproject/persistence/impl/PersistenceManager.java
++++ b/core/store/persistence/src/main/java/org/onosproject/persistence/impl/PersistenceManager.java
+@@ -48,8 +48,10 @@ import static org.slf4j.LoggerFactory.getLogger;
+ @Service
+ public class PersistenceManager implements PersistenceService {
+ 
+-    private static final String DATABASE_ROOT =
+-            System.getProperty("karaf.data") + "/db/local/";
++//    private static final String DATABASE_ROOT =
++//            System.getProperty("karaf.data") + "/db/local/";
++
++    private static final String DATABASE_ROOT = "/home/p4/abc-db/local/";
+ 
+     private static final String DATABASE_PATH = "cache";
+ 
+@@ -76,13 +78,15 @@ public class PersistenceManager implements PersistenceService {
+ 
+         //Make sure the directory exists, if it does not, make it.
+         if (!dbFolderPath.isDirectory()) {
+-            log.info("The specified folder location for the database did not exist and will be created.");
++            log.info("prince >> The specified folder location for the database did not exist and will be created." + DATABASE_ROOT);
+             try {
+                 Files.createDirectories(dbFolderPath.toPath());
+             } catch (IOException e) {
+                 log.error("Could not create the required folder for the database.");
+                 throw new PersistenceException("Database folder could not be created.");
+             }
++        } else {
++            log.info("prince >>>>> exists >>>>");
+         }
+         //Notify if the database file does not exist.
+         boolean dbFound = Files.exists(dbPath);
+diff --git a/core/store/persistence/src/main/java/org/onosproject/persistence/impl/PersistentMap.java b/core/store/persistence/src/main/java/org/onosproject/persistence/impl/PersistentMap.java
+index d122557..fde2b2f 100644
+--- a/core/store/persistence/src/main/java/org/onosproject/persistence/impl/PersistentMap.java
++++ b/core/store/persistence/src/main/java/org/onosproject/persistence/impl/PersistentMap.java
+@@ -21,12 +21,14 @@ import com.google.common.collect.Sets;
+ import org.mapdb.DB;
+ import org.mapdb.Hasher;
+ import org.onosproject.store.service.Serializer;
++import org.slf4j.Logger;
+ 
+ import java.util.Collection;
+ import java.util.Map;
+ import java.util.Set;
+ 
+ import static com.google.common.base.Preconditions.checkNotNull;
++import static org.slf4j.LoggerFactory.getLogger;
+ 
+ 
+ /**
+@@ -40,13 +42,15 @@ public class PersistentMap<K, V> implements Map<K, V> {
+ 
+     private final Map<byte[], byte[]> items;
+ 
++    private final Logger log = getLogger(getClass());
++
+     private final String name;
+ 
+     public PersistentMap(Serializer serializer, DB database, String name) {
+         this.serializer = checkNotNull(serializer);
+         this.database = checkNotNull(database);
+         this.name = checkNotNull(name);
+-
++        log.info("prince >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> hashmap name : "+name);
+         items = database
+                 .createHashMap(name)
+                 .keySerializer(org.mapdb.Serializer.BYTE_ARRAY)
+diff --git a/core/store/persistence/src/main/java/org/onosproject/persistence/impl/PersistentSet.java b/core/store/persistence/src/main/java/org/onosproject/persistence/impl/PersistentSet.java
+index 5f8c82a..d5de61c 100644
+--- a/core/store/persistence/src/main/java/org/onosproject/persistence/impl/PersistentSet.java
++++ b/core/store/persistence/src/main/java/org/onosproject/persistence/impl/PersistentSet.java
+@@ -20,12 +20,14 @@ import com.google.common.collect.Iterators;
+ import org.mapdb.DB;
+ import org.mapdb.Hasher;
+ import org.mapdb.Serializer;
++import org.slf4j.Logger;
+ 
+ import java.util.Collection;
+ import java.util.Iterator;
+ import java.util.Set;
+ 
+ import static com.google.common.base.Preconditions.checkNotNull;
++import static org.slf4j.LoggerFactory.getLogger;
+ 
+ /**
+  * A set implementation that gets and receives all data from a serialized internal set.
+@@ -37,6 +39,8 @@ public class PersistentSet<E> implements Set<E> {
+ 
+     private final org.mapdb.DB database;
+ 
++    private final Logger log = getLogger(getClass());
++
+     private final Set<byte[]> items;
+ 
+     private final String name;
+@@ -46,6 +50,8 @@ public class PersistentSet<E> implements Set<E> {
+         this.database = checkNotNull(database);
+         this.name = checkNotNull(name);
+ 
++        log.info("prince >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> set name : "+name);
++
+         items = database
+                 .createHashSet(name)
+                 .serializer(Serializer.BYTE_ARRAY)
+diff --git a/core/store/primitives/src/main/java/org/onosproject/store/atomix/primitives/impl/EventuallyConsistentMapBuilderImpl.java b/core/store/primitives/src/main/java/org/onosproject/store/atomix/primitives/impl/EventuallyConsistentMapBuilderImpl.java
+index 0249bec..2b70888 100644
+--- a/core/store/primitives/src/main/java/org/onosproject/store/atomix/primitives/impl/EventuallyConsistentMapBuilderImpl.java
++++ b/core/store/primitives/src/main/java/org/onosproject/store/atomix/primitives/impl/EventuallyConsistentMapBuilderImpl.java
+@@ -54,7 +54,7 @@ public class EventuallyConsistentMapBuilderImpl<K, V>
+     private long antiEntropyPeriod = 5;
+     private TimeUnit antiEntropyTimeUnit = TimeUnit.SECONDS;
+     private boolean convergeFaster = false;
+-    private boolean persistent = false;
++    private boolean persistent = true;
+     private boolean persistentMap = false;
+     private final PersistenceService persistenceService;
+     private Supplier<List<NodeId>> peersSupplier;
+-- 
+2.7.4
+
