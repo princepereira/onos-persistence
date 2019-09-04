@@ -1,3 +1,10 @@
+Prince:
+
+ONOS Persistence and Eventually Consistent Map is visible at the patches:
+
+0001-ONOS-persistence.patch
+0002-ONOS-persistence.patch
+
 # ONOS : Open Network Operating System
 
 
